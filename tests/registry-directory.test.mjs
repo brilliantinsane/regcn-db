@@ -1,22 +1,186 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { validateDirectory } from "../lib/registry-directory.mjs"
+import {
+  validateDirectory,
+  validateNetworkedRegistries,
+} from "../lib/registry-directory.mjs"
+
+const validDirectory = {
+  $schema: "./directory.schema.json",
+  registries: [
+    {
+      source: "TheOrcDev/skills",
+      displayName: "TheOrcDev Skills",
+      description: "Agent skills for Claude and Codex workflows.",
+      github: "https://github.com/TheOrcDev/skills",
+    },
+  ],
+}
 
 test("valid Directory Entry passes local validation", () => {
-  const result = validateDirectory({
-    $schema: "./directory.schema.json",
-    registries: [
+  const result = validateDirectory(validDirectory)
+
+  assert.deepEqual(result, { ok: true, errors: [] })
+})
+
+test("valid Directory Entry passes networked Registry Item validation", async () => {
+  const result = await validateNetworkedRegistries(validDirectory, {
+    searchRegistries: async () => ({
+      items: [
+        {
+          name: "orc-me",
+          type: "registry:item",
+          description: "Orc voice mode.",
+          registry: "TheOrcDev/skills",
+          addCommandArgument: "TheOrcDev/skills/orc-me",
+        },
+      ],
+      pagination: {
+        total: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+      },
+    }),
+    getRegistryItems: async () => [
       {
-        source: "TheOrcDev/skills",
-        displayName: "TheOrcDev Skills",
-        description: "Agent skills for Claude and Codex workflows.",
-        github: "https://github.com/TheOrcDev/skills",
+        name: "orc-me",
+        type: "registry:item",
+        files: [
+          {
+            path: "skills/orc-me/SKILL.md",
+            type: "registry:file",
+            target: ".claude/skills/orc-me/SKILL.md",
+          },
+        ],
       },
     ],
   })
 
-  assert.deepEqual(result, { ok: true, errors: [] })
+  assert.deepEqual(result, {
+    ok: true,
+    errors: [],
+    warnings: [],
+    items: [
+      {
+        name: "orc-me",
+        type: "registry:item",
+        description: "Orc voice mode.",
+        registry: "TheOrcDev/skills",
+        addCommandArgument: "TheOrcDev/skills/orc-me",
+      },
+    ],
+  })
+})
+
+test("networked validation fails when a Registry cannot be listed", async () => {
+  const result = await validateNetworkedRegistries(validDirectory, {
+    searchRegistries: async () => {
+      throw new Error("not found")
+    },
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join("\n"), /could not be listed: not found/)
+})
+
+test("networked validation fails when no Registry Items are listable", async () => {
+  const result = await validateNetworkedRegistries(validDirectory, {
+    searchRegistries: async () => ({
+      items: [],
+      pagination: {
+        total: 0,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+      },
+    }),
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join("\n"), /at least one listable Registry Item/)
+})
+
+test("networked validation fails malformed resolved Registry Items", async () => {
+  const result = await validateNetworkedRegistries(validDirectory, {
+    searchRegistries: async () => ({
+      items: [
+        {
+          name: "orc-me",
+          type: "registry:item",
+          registry: "other/registry",
+          addCommandArgument: "TheOrcDev/skills/not-orc-me",
+        },
+      ],
+      pagination: {
+        total: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+      },
+    }),
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(
+    result.errors.join("\n"),
+    /description must be a non-empty string/
+  )
+  assert.match(
+    result.errors.join("\n"),
+    /registry must equal "TheOrcDev\/skills"/
+  )
+  assert.match(
+    result.errors.join("\n"),
+    /addCommandArgument must equal "TheOrcDev\/skills\/orc-me"/
+  )
+})
+
+test("networked validation warns for human-judgment install risks", async () => {
+  const result = await validateNetworkedRegistries(validDirectory, {
+    searchRegistries: async () => ({
+      items: [
+        {
+          name: "orc-me",
+          type: "registry:item",
+          description: "Orc voice mode.",
+          registry: "TheOrcDev/skills",
+          addCommandArgument: "TheOrcDev/skills/orc-me",
+        },
+      ],
+      pagination: {
+        total: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+      },
+    }),
+    getRegistryItems: async () => [
+      {
+        name: "orc-me",
+        type: "registry:item",
+        dependencies: ["left-pad"],
+        registryDependencies: ["TheOrcDev/skills/cut-it"],
+        envVars: {
+          API_KEY: "",
+        },
+        files: [
+          {
+            path: "skills/orc-me/SKILL.md",
+            type: "registry:file",
+            target: "~/.claude/skills/orc-me/SKILL.md",
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.equal(result.ok, true)
+  assert.match(result.warnings.join("\n"), /declares dependencies/)
+  assert.match(result.warnings.join("\n"), /declares Registry Dependencies/)
+  assert.match(result.warnings.join("\n"), /declares environment variables/)
+  assert.match(result.warnings.join("\n"), /writes to unusual target/)
 })
 
 test("Directory Entry with mismatched Registry GitHub Link fails local validation", () => {
