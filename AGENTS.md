@@ -14,6 +14,10 @@ Issues and PRDs are tracked in GitHub Issues using the `gh` CLI. See `docs/agent
 
 Before closing or changing state on an implementation issue, follow `docs/agents/issue-workflow.md`. Do not close implementation issues until the code is committed and pushed.
 
+### Implementation workflow
+
+Use the local `do-work` skill for issue implementation loops: pick the next unblocked issue from the current PRD, work TDD-first, verify with `pnpm`, commit, push, update checkboxes/labels, and close only after the pushed commit.
+
 ### Triage labels
 
 Triage uses the default five-label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
