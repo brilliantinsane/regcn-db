@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import {
+  resolveRegistryItemGroups,
   validateDirectory,
   validateNetworkedRegistries,
 } from "../lib/registry-directory.mjs"
@@ -181,6 +182,128 @@ test("networked validation warns for human-judgment install risks", async () => 
   assert.match(result.warnings.join("\n"), /declares Registry Dependencies/)
   assert.match(result.warnings.join("\n"), /declares environment variables/)
   assert.match(result.warnings.join("\n"), /writes to unusual target/)
+})
+
+test("resolver returns Registry groups in Contribution Order with derived items", async () => {
+  const directory = {
+    $schema: "./directory.schema.json",
+    registries: [
+      {
+        source: "first/registry",
+        displayName: "First Registry",
+        description: "First registry in Contribution Order.",
+        github: "https://github.com/first/registry",
+      },
+      {
+        source: "second/registry",
+        displayName: "Second Registry",
+        description: "Second registry in Contribution Order.",
+        github: "https://github.com/second/registry",
+      },
+    ],
+  }
+
+  const groups = await resolveRegistryItemGroups(directory, {
+    searchRegistries: async ([source]) => ({
+      items: [
+        {
+          name: source === "first/registry" ? "alpha" : "beta",
+          type: "registry:item",
+          description: `${source} item.`,
+          registry: source,
+          addCommandArgument: `${source}/${
+            source === "first/registry" ? "alpha" : "beta"
+          }`,
+        },
+      ],
+      pagination: {
+        total: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false,
+      },
+    }),
+  })
+
+  assert.deepEqual(
+    groups.map((group) => group.entry.source),
+    ["first/registry", "second/registry"]
+  )
+  assert.deepEqual(
+    groups.map((group) => group.contributionOrder),
+    [0, 1]
+  )
+  assert.equal(groups[0].status, "available")
+  assert.equal(groups[0].items[0].addCommandArgument, "first/registry/alpha")
+  assert.equal(groups[1].status, "available")
+  assert.equal(groups[1].items[0].addCommandArgument, "second/registry/beta")
+})
+
+test("resolver keeps unavailable Registry context without blocking reachable Registries", async () => {
+  const directory = {
+    $schema: "./directory.schema.json",
+    registries: [
+      {
+        source: "available/registry",
+        displayName: "Available Registry",
+        description: "A reachable Registry.",
+        github: "https://github.com/available/registry",
+      },
+      {
+        source: "missing/registry",
+        displayName: "Missing Registry",
+        description: "An unreachable Registry.",
+        github: "https://github.com/missing/registry",
+        homepage: "https://example.com/missing",
+      },
+      {
+        source: "recovered/registry",
+        displayName: "Recovered Registry",
+        description: "A later reachable Registry.",
+        github: "https://github.com/recovered/registry",
+      },
+    ],
+  }
+
+  const groups = await resolveRegistryItemGroups(directory, {
+    searchRegistries: async ([source]) => {
+      if (source === "missing/registry") {
+        throw new Error("network unavailable")
+      }
+
+      return {
+        items: [
+          {
+            name: "item",
+            type: "registry:item",
+            description: `${source} item.`,
+            registry: source,
+            addCommandArgument: `${source}/item`,
+          },
+        ],
+        pagination: {
+          total: 1,
+          offset: 0,
+          limit: 100,
+          hasMore: false,
+        },
+      }
+    },
+  })
+
+  assert.deepEqual(
+    groups.map((group) => group.status),
+    ["available", "unavailable", "available"]
+  )
+  assert.deepEqual(
+    groups.map((group) => group.entry.source),
+    ["available/registry", "missing/registry", "recovered/registry"]
+  )
+  assert.equal(groups[1].entry.displayName, "Missing Registry")
+  assert.equal(groups[1].entry.homepage, "https://example.com/missing")
+  assert.equal(groups[1].reason, "network unavailable")
+  assert.deepEqual(groups[1].items, [])
+  assert.equal(groups[2].items[0].addCommandArgument, "recovered/registry/item")
 })
 
 test("Directory Entry with mismatched Registry GitHub Link fails local validation", () => {
