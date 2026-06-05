@@ -1,0 +1,11 @@
+{
+  "$schema": "./directory.schema.json",
+  "registries": [
+    {
+      "source": "TheOrcDev/skills",
+      "displayName": "TheOrcDev Skills",
+      "description": "Agent skills for Claude and Codex workflows.",
+      "github": "https://github.com/TheOrcDev/skills"
+    }
+  ]
+}

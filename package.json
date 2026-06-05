@@ -7,8 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --test",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
+    "registry:check": "node scripts/registry-check.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
