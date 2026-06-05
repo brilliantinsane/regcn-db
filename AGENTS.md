@@ -12,6 +12,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Issues and PRDs are tracked in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+Before closing or changing state on an implementation issue, follow `docs/agents/issue-workflow.md`. Do not close implementation issues until the code is committed and pushed.
+
 ### Triage labels
 
 Triage uses the default five-label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
